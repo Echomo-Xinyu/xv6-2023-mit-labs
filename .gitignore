@@ -103,6 +103,17 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# Unknown but auto-generated files
+_*
+*.asm
+*.sym
+initcode
+*.S
+mkfs
+kernel
+fs.img
+
+
 # Python cache
 __pycache__/
 
