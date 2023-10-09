@@ -112,7 +112,7 @@ initcode
 mkfs
 kernel
 fs.img
-
+xv6.out.*
 
 # Python cache
 __pycache__/
