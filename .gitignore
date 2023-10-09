@@ -110,7 +110,6 @@ _*
 initcode
 *.S
 mkfs
-kernel
 fs.img
 xv6.out.*
 .gdbinit
