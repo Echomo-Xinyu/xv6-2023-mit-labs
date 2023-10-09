@@ -7,6 +7,7 @@ struct proc;
 struct spinlock;
 struct sleeplock;
 struct stat;
+struct sysinfo;
 struct superblock;
 
 // bio.c
@@ -63,6 +64,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+int             freemem(void);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -106,9 +108,13 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+int             nproc(void);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
+
+// sysinfo.c
+int             systeminfo(uint64);
 
 // spinlock.c
 void            acquire(struct spinlock*);
