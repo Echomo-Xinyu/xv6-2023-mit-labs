@@ -1,0 +1,3 @@
+Q: what other system calls can be accelerated similar to getpid?
+
+A: sys_uptime: to update the uptime of the process into the page when in kernel mode.
