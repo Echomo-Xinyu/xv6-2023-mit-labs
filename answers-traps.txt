@@ -1,0 +1,7 @@
+- register a1, a2 stores the function arguments and specifically, a2 stores the value 13
+- the call to f is at line 0x22 and the call to g by f is at 0x14 to 0x18
+- printf is at 0x630
+- after jumping to printf function, the ra register has value 0x34
+- the output is "He110 World". 57616 = 0x110
+  - to have same output with large endian, i should be 0x726c64 and constant should be 286 which have 0x011E value.
+- it will print the value stored on register a2, despite it is not initialized here
