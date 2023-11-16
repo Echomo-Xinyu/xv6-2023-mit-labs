@@ -99,8 +99,8 @@ sys_sigalarm(void)
 {
   int n;
   uint64 handler;
-  argint(1, &n);
-  argaddr(2, &handler);
+  argint(0, &n);
+  argaddr(1, &handler);
 
   myproc()->alarm_ticks = n;
   myproc()->curr_alarm_ticks = 0;
@@ -114,6 +114,6 @@ sys_sigreturn(void)
 {
   struct proc *p = myproc();
 	memmove(p->trapframe, &(p->rtntp), sizeof(struct trapframe));
-	p->curr_alarm_ticks = 0;
+  p->curr_alarm_ticks = 0;
 	return 0;
 }
