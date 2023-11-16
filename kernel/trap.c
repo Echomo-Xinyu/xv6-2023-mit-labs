@@ -81,6 +81,7 @@ usertrap(void)
     if(p->alarm_ticks){
       if(++p->curr_alarm_ticks == p->alarm_ticks){
         memmove(&(p->rtntp), p->trapframe, sizeof(struct trapframe));
+        p->prev_a0 = p->trapframe->a0;
         p->trapframe->epc = p->alarm_handler;
       }
     }

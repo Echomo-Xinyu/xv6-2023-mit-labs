@@ -108,4 +108,5 @@ struct proc {
   int curr_alarm_ticks;        // number of ticks since last alarm
   uint64 alarm_handler;        // function to execute when alarm is triggered
   struct trapframe rtntp;      // trapframe to return
+  uint64 prev_a0;              // previous a0 register value
 };
