@@ -63,6 +63,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            increment_counter(uint64);
+int             pagefault_handler(pagetable_t, uint64);
 
 // log.c
 void            initlog(int, struct superblock*);
