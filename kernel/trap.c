@@ -40,23 +40,29 @@ cowfault(pagetable_t pagetable, uint64 va)
   // ensure page is valid, address is valid and user can access
   if(pte == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_V) == 0 ||(*pte & PTE_COW)==0)
     return -1;
-  
-  // if((PTE_FLAGS(*pte) & PTE_COW) == 0)
-  //   return -1;
 
   uint64 pa1 = PTE2PA(*pte);
-  uint64 pa2 = (uint64) kalloc();
-  if(pa2 == 0){
-    printf("cow kalloc failed.\n");
-    return -1;
+  int refcnt = getref(pa1);
+
+  if(refcnt == 1){
+    *pte = (*pte & (~PTE_COW)) | PTE_W;
+    return 0;
+  } else if(refcnt > 1) {
+    uint64 pa2 = (uint64) kalloc();
+    if(pa2 == 0){
+      printf("cow kalloc failed.\n");
+      return -1;
+    }
+
+    memmove((void*)pa2, (void*)pa1, PGSIZE);
+    kfree((void*)pa1);
+
+    uint flags = PTE_FLAGS(*pte);
+    *pte = (PA2PTE(pa2) | flags | PTE_W) & (~PTE_COW);
+
+    return 0;
   }
-
-  memmove((void*)pa2, (void*)pa1, PGSIZE);
-  kfree((void*)pa1);
-
-  *pte = PA2PTE(pa2) | PTE_V | PTE_U | PTE_R | PTE_W | PTE_X;
-
-  return 0;
+  return -1;
 }
 
 //
@@ -96,8 +102,12 @@ usertrap(void)
 
     syscall();
   } else if(r_scause() == 0xf) {
-    if(cowfault(p->pagetable, r_stval()) < 0) {
-      // if memory allocation fail, kill the process
+    uint64 va0 = r_stval();
+    if(va0 > p->sz) {
+      setkilled(p);    
+    } else if(cowfault(p->pagetable,va0) !=0 ) {
+      setkilled(p);
+    } else if(va0 < PGSIZE) {
       setkilled(p);
     }
   } else if((which_dev = devintr()) != 0){

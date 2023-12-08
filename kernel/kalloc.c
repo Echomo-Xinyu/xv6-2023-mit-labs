@@ -28,7 +28,6 @@ struct {
   char refcount[PHYSTOP/PGSIZE];
 } ref;
 
-
 void
 kinit()
 {
@@ -50,38 +49,6 @@ freerange(void *pa_start, void *pa_end)
   }
 }
 
-void
-incref(uint64 pa)
-{
-  int pn = pa / PGSIZE;
-  acquire(&ref.reflock);
-  if(pa >= PHYSTOP || ref.refcount[pn] < 1)
-    panic("incref");
-  ref.refcount[pn] += 1;
-  release(&ref.reflock);
-}
-
-int
-getref(uint64 pa)
-{
-  int pn = pa / PGSIZE;
-  acquire(&ref.reflock);
-  int refcnt = ref.refcount[pn];
-  release(&ref.reflock);
-  return refcnt;
-}
-
-void
-decref(uint64 pa)
-{
-  int pn = pa / PGSIZE;
-  acquire(&ref.reflock);
-  if(pa >= PHYSTOP || ref.refcount[pn] < 1)
-    panic("decref");
-  ref.refcount[pn] -= 1;
-  release(&ref.reflock);
-}
-
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -94,16 +61,10 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  if(getref((uint64)pa) < 1)
-    panic("kfree ref");
-  
-  decref((uint64)pa);
-  int temp = getref((uint64)pa);
-
-  // only free the page when no ref to page
-  if(temp > 0)
+  char refcnt = decref((uint64)pa);
+  if(refcnt>0)
     return;
-
+  
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -127,7 +88,8 @@ kalloc(void)
   r = kmem.freelist;
   if(r){
     kmem.freelist = r->next;
-    uint pn = (uint64)r / PGSIZE;
+    // page number
+    int pn = (uint64)r / PGSIZE;
     if(ref.refcount[pn] != 0)
       panic("kalloc ref non zero!");
     ref.refcount[pn] = 1;
@@ -137,4 +99,27 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+int
+getref(uint64 pa){
+  acquire(&ref.reflock);
+  int refcnt = ref.refcount[pa/PGSIZE];
+  release(&ref.reflock);
+  return refcnt;
+}
+
+void
+incref(uint64 pa){
+  acquire(&ref.reflock);
+  ref.refcount[pa/PGSIZE]++;
+  release(&ref.reflock);
+}
+
+int
+decref(uint64 pa){
+  acquire(&ref.reflock);
+  int refcnt = --ref.refcount[pa/PGSIZE];
+  release(&ref.reflock);
+  return refcnt;
 }
