@@ -38,7 +38,7 @@ cowfault(pagetable_t pagetable, uint64 va)
   pte_t* pte = walk(pagetable, va, 0);
   
   // ensure page is valid, address is valid and user can access
-  if(pte == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_V) == 0)
+  if(pte == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_V) == 0 ||(*pte & PTE_COW)==0)
     return -1;
   
   // if((PTE_FLAGS(*pte) & PTE_COW) == 0)
