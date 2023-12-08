@@ -127,9 +127,9 @@ kalloc(void)
   r = kmem.freelist;
   if(r){
     kmem.freelist = r->next;
-    if(getref((uint64)r) != 0)
-      panic("kalloc ref non zero!");
     uint pn = (uint64)r / PGSIZE;
+    if(ref.refcount[pn] != 0)
+      panic("kalloc ref non zero!");
     ref.refcount[pn] = 1;
   }
   release(&kmem.lock);
