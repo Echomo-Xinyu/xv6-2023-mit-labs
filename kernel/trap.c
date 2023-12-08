@@ -103,6 +103,7 @@ usertrap(void)
     syscall();
   } else if(r_scause() == 0xf) {
     uint64 va0 = r_stval();
+    // nested if fixes the testwrite test case
     if(va0 > p->sz) {
       setkilled(p);    
     } else if(cowfault(p->pagetable,va0) !=0 ) {
