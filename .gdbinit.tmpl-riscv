@@ -1,6 +1,8 @@
 set confirm off
 set architecture riscv:rv64
-target remote localhost:25501
 symbol-file kernel/kernel
 set disassemble-next-line auto
 set riscv use-compressed-breakpoints yes
+add-auto-load-safe-path /Users/echom/Downloads/6.S081/xv6-2023-mit-labs/.gdbinit
+file kernel/kernel
+target remote tcp::25501
