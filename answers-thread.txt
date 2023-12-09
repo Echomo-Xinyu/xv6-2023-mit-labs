@@ -1,0 +1,17 @@
+in the
+
+```
+static void 
+insert(int key, int value, struct entry **p, struct entry *n)
+{
+  struct entry *e = malloc(sizeof(struct entry));
+  e->key = key;
+  e->value = value;
+  e->next = n;
+  *p = e;
+}
+```
+
+the insert process relies on the *p pointer to update.
+When two threads update the same *p pointer, which is the head of the current linked list,
+they may overwrite the changes made by the other thread and hence results the race condition.
