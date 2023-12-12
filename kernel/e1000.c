@@ -19,7 +19,7 @@ static struct mbuf *rx_mbufs[RX_RING_SIZE];
 // remember where the e1000's registers live.
 static volatile uint32 *regs;
 
-struct spinlock e1000_lock;
+struct spinlock e1000_lock, e1000_recv_lock;
 
 // called by pci_init().
 // xregs is the memory address at which the
@@ -30,6 +30,7 @@ e1000_init(uint32 *xregs)
   int i;
 
   initlock(&e1000_lock, "e1000");
+  initlock(&e1000_recv_lock, "e1000_recv");
 
   regs = xregs;
 
@@ -102,7 +103,30 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+  acquire(&e1000_lock);
+  // find next packet (expected) index
+  uint32 index = regs[E1000_TDT];
+  // check if the the ring is overflowing
+  if(!tx_ring[index].status & E1000_TXD_STAT_DD){
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // free the last mbuf that was transmitted from that descriptor if present
+  if(tx_mbufs[index]){
+    mbuffree(tx_mbufs[index]);
+  }
+
+  // fill in the descriptor
+  tx_mbufs[index] = m;
+  memset(&tx_ring[index], 0, sizeof(struct tx_desc));
+  tx_ring[index].addr = (uint64) m->head;
+  tx_ring[index].length = (uint16) m->len;
+  tx_ring[index].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+
+  // update ring position
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
+  release(&e1000_lock);
   return 0;
 }
 
@@ -115,6 +139,24 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  while(1){
+    // get index of next waiting received packet (if any)
+    uint32 index = regs[E1000_RDT] % TX_RING_SIZE;
+
+    // check if a new packet is available
+    if(!tx_ring[index].status & E1000_RXD_STAT_DD){
+      return;
+    }
+    rx_mbufs[index]->len = rx_ring[index].length;
+    // deliver the mbuf to the network stack
+    net_rx(rx_mbufs[index]);
+    struct mbuf *m = mbufalloc(0);
+    rx_mbufs[index] = m;
+    rx_ring[index].addr = (uint64) m->head;
+    rx_ring[index].status = 0;
+
+    regs[E1000_RDT] = index;
+  }
 }
 
 void
@@ -123,7 +165,9 @@ e1000_intr(void)
   // tell the e1000 we've seen this interrupt;
   // without this the e1000 won't raise any
   // further interrupts.
+  acquire(&e1000_recv_lock);
   regs[E1000_ICR] = 0xffffffff;
-
+  __sync_synchronize();
   e1000_recv();
+  release(&e1000_recv_lock);
 }
