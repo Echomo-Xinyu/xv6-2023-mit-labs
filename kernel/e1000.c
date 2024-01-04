@@ -107,7 +107,7 @@ e1000_transmit(struct mbuf *m)
   // find next packet (expected) index
   uint32 index = regs[E1000_TDT];
   // check if the the ring is overflowing
-  if(!tx_ring[index].status & E1000_TXD_STAT_DD){
+  if(!(tx_ring[index].status & E1000_TXD_STAT_DD)){
     release(&e1000_lock);
     return -1;
   }
@@ -144,7 +144,7 @@ e1000_recv(void)
     uint32 index = (regs[E1000_RDT] + 1) % TX_RING_SIZE;
 
     // check if a new packet is available
-    if(!tx_ring[index].status & E1000_RXD_STAT_DD){
+    if(!(tx_ring[index].status & E1000_RXD_STAT_DD)){
       return;
     }
     rx_mbufs[index]->len = rx_ring[index].length;
