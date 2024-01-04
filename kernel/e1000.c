@@ -104,31 +104,28 @@ e1000_transmit(struct mbuf *m)
   // a pointer so that it can be freed after sending.
   //
   acquire(&e1000_lock);
+  // find next packet (expected) index
   uint32 index = regs[E1000_TDT];
-  if(!(tx_ring[index].status & E1000_TXD_STAT_DD)){
-    // last transmit request hasn't been finished yet.
-    // return error
+  // check if the the ring is overflowing
+  if(!tx_ring[index].status & E1000_TXD_STAT_DD){
     release(&e1000_lock);
     return -1;
   }
 
-  // otherwise, the mbuf indicated by tx_ring[index]
-  // has been transmitted. Then free it.
+  // free the last mbuf that was transmitted from that descriptor if present
   if(tx_mbufs[index]){
     mbuffree(tx_mbufs[index]);
   }
 
+  // fill in the descriptor
   tx_mbufs[index] = m;
-  // modify the tx_ring[index], so that rx_desc points to right mbuf
   memset(&tx_ring[index], 0, sizeof(struct tx_desc));
-  tx_ring[index].addr   = (uint64)m->head;
-  tx_ring[index].length = (uint16)m->len;
-  // look at section 3.3.3.1 in the E1000 Manual
-  // Actually in e1000_dev.h, there are only 2 bits
-  // E1000_TXD_CMD_RS and E1000_TXD_CMD_EOP
-  // set report status for future use, and alse the end of packets bit.
-  tx_ring[index].cmd    = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
-  regs[E1000_TDT]       = (index + 1) % TX_RING_SIZE;
+  tx_ring[index].addr = (uint64) m->head;
+  tx_ring[index].length = (uint16) m->len;
+  tx_ring[index].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+
+  // update ring position
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
   release(&e1000_lock);
   return 0;
 }
@@ -143,14 +140,13 @@ e1000_recv(void)
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
   while(1){
-    uint32 index = regs[E1000_RDT];
-    index = (index+1) % RX_RING_SIZE;
+    // get index of next waiting received packet (if any)
+    uint32 index = regs[E1000_RDT] % TX_RING_SIZE;
 
-    // if no new packets available
-    if(!(rx_ring[index].status & E1000_RXD_STAT_DD))
+    // check if a new packet is available
+    if(!tx_ring[index].status & E1000_RXD_STAT_DD){
       return;
-
-    // otherwise, update mbuf
+    }
     rx_mbufs[index]->len = rx_ring[index].length;
     // deliver the mbuf to the network stack
     net_rx(rx_mbufs[index]);
