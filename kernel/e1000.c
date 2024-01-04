@@ -141,7 +141,7 @@ e1000_recv(void)
   //
   while(1){
     // get index of next waiting received packet (if any)
-    uint32 index = regs[E1000_RDT] % TX_RING_SIZE;
+    uint32 index = (regs[E1000_RDT] + 1) % TX_RING_SIZE;
 
     // check if a new packet is available
     if(!tx_ring[index].status & E1000_RXD_STAT_DD){
