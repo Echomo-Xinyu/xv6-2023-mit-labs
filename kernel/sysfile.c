@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "memlayout.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -507,7 +508,60 @@ sys_pipe(void)
 uint64
 sys_mmap(void)
 {
-  return -1;
+  uint64 addr;
+  int len, prot, flags, offset;
+  struct file *f;
+
+  argaddr(0, &addr);
+  argint(1, &len);
+  argint(2, &prot);
+  argint(3, &flags);
+  argfd(4, 0, &f);
+  argint(5, &offset);
+
+  if(addr!=0 || offset!=0 || f==0)
+    return -1;
+  
+  if(flags & MAP_PRIVATE)
+    prot &= ~PROT_WRITE;
+
+  if(f->readable==0)
+    return -1;
+
+  if(f->writable==0 && prot&PROT_WRITE)
+    return -1;
+
+  struct proc *p = myproc();
+
+  int i;
+  for(i=0; i<MAX_VMA_COUNT&&p->vma_list[i].used; i++){}
+  if(i == MAX_VMA_COUNT)
+    return -1;
+
+  uint64 start, end;
+  if(i==0){
+    start = 0x40000000;
+  }else{
+    start = p->vma_list[i-1].end;
+  }
+
+  if(start>TRAPFRAME)
+    return -1;
+  
+  end = start + PGROUNDUP(len);
+  if(end>TRAPFRAME)
+    return -1;
+
+  p->vma_list[i].used = 1;
+  p->vma_list[i].start = start;
+  p->vma_list[i].end = end;
+  p->vma_list[i].prot = prot;
+  p->vma_list[i].flags = flags;
+  p->vma_list[i].file = f;
+
+  filedup(f);
+
+  return start;
 }
 
 uint64

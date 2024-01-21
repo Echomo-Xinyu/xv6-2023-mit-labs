@@ -35,7 +35,7 @@ int pgaccess(void *base, int len, void *mask);
 int ugetpid(void);
 #endif
 // mmap lab
-char *mmap(char *addr, int length, int prot, int flags,int fd, int offset);
+char* mmap(char *addr, int length, int prot, int flags, int fd, int offset);
 int munmap(char *addr, int length);
 
 // ulib.c

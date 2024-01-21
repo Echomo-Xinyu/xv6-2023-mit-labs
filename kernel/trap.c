@@ -3,8 +3,11 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -27,6 +30,57 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
+}
+
+int
+handle_page_fault(struct proc *p, uint64 va)
+{
+  pagetable_t pagetable = p->pagetable;
+  uint64 addr = PGROUNDDOWN(va);
+
+  if(addr>=TRAPFRAME)
+    return -1;
+  
+  struct vma *vma;
+  int vma_found = 0;
+  for(int i=0; i<MAX_VMA_COUNT; i++)
+    if(p->vma_list[i].used
+        && p->vma_list[i].start <= addr
+        && addr < p->vma_list[i].end){
+      vma = &p->vma_list[i];
+      vma_found = 1;
+      break;
+    }
+  if(vma_found!=1)
+    return -1;
+  
+  struct inode *ip;
+  if(vma->file==0 || (ip=vma->file->ip)==0)
+    return -1;
+
+  char* mem;
+  if((mem=(char*)kalloc())==0)
+    return -1;
+
+  if(mappages(pagetable, addr, PGSIZE, (uint64)mem, vma->prot|PTE_U) != 0){
+    kfree(mem);
+    return -1;
+  }
+
+  int read_length;
+  ilock(ip);
+
+  if((read_length=readi(ip, 1, addr, addr - vma->start, PGSIZE))<=0){
+    iunlock(ip);
+    return -1;
+  }
+
+  iunlock(ip);
+
+  if(read_length<PGSIZE)
+    memset(mem+read_length, 0, PGSIZE-read_length);
+
+  return 0;
 }
 
 //
@@ -67,6 +121,9 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    if(handle_page_fault(p, r_stval())<0)
+      p->killed = 1;
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
