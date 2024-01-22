@@ -146,14 +146,6 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  for(int i=0;i<MAX_VMA_COUNT;i++){
-    p->vma_list[i].used=0;
-    p->vma_list[i].start=0;
-    p->vma_list[i].end=0;
-    p->vma_list[i].prot=0;
-    p->vma_list[i].file=0;
-  }
-
   return p;
 }
 
@@ -303,18 +295,6 @@ fork(void)
     return -1;
   }
 
-  for(int i=0;i<MAX_VMA_COUNT;i++){
-    np->vma_list[i].used=p->vma_list[i].used;
-    np->vma_list[i].start=p->vma_list[i].start;
-    np->vma_list[i].end=p->vma_list[i].end;
-    np->vma_list[i].flags=p->vma_list[i].flags;
-    np->vma_list[i].prot=p->vma_list[i].prot;
-
-    if(p->vma_list[i].file){
-        np->vma_list[i].file=filedup(p->vma_list[i].file);
-    }
-  }
-
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -341,6 +321,30 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+
+  np->vma = 0;
+  struct vma *pv = p->vma;
+  struct vma *pre = 0;
+  while(pv){
+    struct vma *vma = vma_alloc();
+    vma->start = pv->start;
+    vma->end = pv->end;
+    vma->off = pv->off;
+    vma->length = pv->length;
+    vma->permission = pv->permission;
+    vma->flags = pv->flags;
+    vma->file = pv->file;
+    filedup(vma->file);
+    vma->next = 0;
+    if(pre == 0){
+      np->vma = vma;
+    }else{
+      pre->next = vma;
+    }
+    pre = vma;
+    release(&vma->lock);
+    pv = pv->next;
+  }
   release(&np->lock);
 
   return pid;
@@ -371,6 +375,21 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  // munmap all mmap vma
+  struct vma* v = p->vma;
+  struct vma* pv;
+  while(v){
+    writeback(v, v->start, v->length);
+    uvmunmap(p->pagetable, v->start, PGROUNDUP(v->length) / PGSIZE, 1);
+    fileclose(v->file);
+    pv = v->next;
+    acquire(&v->lock);
+    v->next = 0;
+    v->length = 0;
+    release(&v->lock);
+    v = pv;
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
@@ -706,4 +725,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+struct vma vma_list[MAX_VMA_COUNT];
+struct vma* 
+vma_alloc()
+{
+  for(int i = 0; i < MAX_VMA_COUNT; i++){
+    acquire(&vma_list[i].lock);
+    if(vma_list[i].length == 0){
+      return &vma_list[i];
+    } 
+    release(&vma_list[i].lock);
+  }
+  panic("no enough vma");
 }

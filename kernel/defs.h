@@ -16,6 +16,9 @@ struct superblock;
 struct mbuf;
 struct sock;
 #endif
+#ifdef LAB_MMAP
+struct vma;
+#endif
 
 // bio.c
 void            binit(void);
@@ -24,6 +27,7 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
+struct vma*     vma_alloc();
 
 // console.c
 void            consoleinit(void);
@@ -187,6 +191,8 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             mmap_handler(uint64, int);
+void            writeback(struct vma*, uint64, int);
 
 // plic.c
 void            plicinit(void);

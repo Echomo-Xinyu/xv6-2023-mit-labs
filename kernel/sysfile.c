@@ -509,63 +509,101 @@ uint64
 sys_mmap(void)
 {
   uint64 addr;
-  int len, prot, flags, offset;
-  struct file *f;
-
+  int length, prot, flags, fd, offset;
   argaddr(0, &addr);
-  argint(1, &len);
+  argint(1, &length);
   argint(2, &prot);
   argint(3, &flags);
-  argfd(4, 0, &f);
+  argint(4, &fd);
   argint(5, &offset);
-
-  if(addr!=0 || offset!=0 || f==0)
-    return -1;
-  
-  if(flags & MAP_PRIVATE)
-    prot &= ~PROT_WRITE;
-
-  if(f->readable==0)
-    return -1;
-
-  if(f->writable==0 && prot&PROT_WRITE)
-    return -1;
-
+  if(addr != 0)
+    panic("mmap: addr not 0");
+  if(offset != 0)
+    panic("mmap: offset not 0");
   struct proc *p = myproc();
-
-  int i;
-  for(i=0; i<MAX_VMA_COUNT&&p->vma_list[i].used; i++){}
-  if(i == MAX_VMA_COUNT)
-    return -1;
-
-  uint64 start, end;
-  if(i==0){
-    start = 0x40000000;
-  }else{
-    start = p->vma_list[i-1].end;
+  struct file* f = p->ofile[fd];
+  int pte_flag = PTE_U;
+  if (prot & PROT_WRITE) {
+    if(!f->writable && !(flags & MAP_PRIVATE)) 
+      return -1; // map to a unwritable file with PROT_WRITE
+    pte_flag |= PTE_W;
+  }
+  if (prot & PROT_READ) {
+    if(!f->readable) 
+      return -1; // map to a unreadable file with PROT_READ
+    pte_flag |= PTE_R;
   }
 
-  if(start>TRAPFRAME)
-    return -1;
-  
-  end = start + PGROUNDUP(len);
-  if(end>TRAPFRAME)
-    return -1;
-
-  p->vma_list[i].used = 1;
-  p->vma_list[i].start = start;
-  p->vma_list[i].end = end;
-  p->vma_list[i].prot = prot;
-  p->vma_list[i].flags = flags;
-  p->vma_list[i].file = f;
-
+  struct vma* v = vma_alloc();
+  v->permission = pte_flag;
+  v->length = length;
+  v->off = offset;
+  v->file = myproc()->ofile[fd];
+  v->flags = flags;
   filedup(f);
-
-  return start;
+  struct vma* pv = p->vma;
+  if(pv == 0){
+    v->start = VMA_START;
+    v->end = v->start + length;
+    p->vma = v;
+  }else{
+    while(pv->next) pv = pv->next;
+    v->start = PGROUNDUP(pv->end);
+    v->end = v->start + length;
+    pv->next = v;
+    v->next = 0;
+  }
+  addr = v->start;
+  // printf("mmap: [%p, %p)\n", addr, v->end);
+  release(&v->lock);
+  return addr;
 }
 
 uint64
 sys_munmap(void)
 {
-  return -1;
+  uint64 addr;
+  int length;
+  argaddr(0, &addr);
+  argint(1, &length);
+  
+  struct proc *p = myproc();
+  struct vma *v = p->vma;
+  struct vma *pre = 0;
+  while(v != 0){
+    if(addr >= v->start && addr < v->end) break; // found
+      pre = v;
+      v = v->next;
+  }
+  if(v == 0) return -1; // not mapped
+  // printf("munmap: %p %d\n", addr, length);
+  if(addr != v->start && addr + length != v->end) 
+    panic("munmap middle of vma");
+  if(addr == v->start){
+    writeback(v, addr, length);
+    uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+    if(length == v->length){
+      // free all
+      fileclose(v->file);
+      if(pre == 0){
+        p->vma = v->next; // head
+      }else{
+        pre->next = v->next;
+        v->next = 0;
+      }
+      acquire(&v->lock);
+      v->length = 0;
+      release(&v->lock);
+    }else{
+      // free head
+      v->start -= length;
+      v->off += length;
+      v->length -= length;
+    }
+  }else{
+    // free tail
+    v->length -= length;
+    v->end -= length;
+  }
+  return 0;
 }
